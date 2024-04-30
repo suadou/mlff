@@ -7,7 +7,6 @@ from collections import namedtuple
 from typing import Any
 
 from ase.calculators.calculator import Calculator
-from ase.neighborlist import neighbor_list as ase_neighbor_list
 
 from mlff.utils.structures import Graph
 from mlff.mdx.potential import MLFFPotentialSparse
@@ -19,10 +18,10 @@ except ImportError:
     raise ImportError('Please install GLP package for running MD.')
 
 SpatialPartitioning = namedtuple(
-    "SpatialPartitioning", ("allocate_fn", "update_fn", "cutoff", "skin", "capacity_multiplier")
+    "SpatialPartitioning", ("allocate_fn", "update_fn", "cutoff", "electro_cutoff", "skin", "capacity_multiplier")
 )
-Pairs = namedtuple("Pairs", ("idx_i_lr", "idx_j_lr"))
 
+PME = namedtuple("PME", ("ngrid", "alpha", "tolerance", "frequencies"))
 logging.basicConfig(level=logging.INFO)
 
 StackNet = Any
@@ -92,8 +91,8 @@ class mlffCalculatorSparse(Calculator):
             '\'eV\' and \'Ang\' as units.'
         )
         if calculate_stress:
-            def energy_fn(system, strain: jnp.ndarray, neighbors, pairs):
-                graph = system_to_graph(system, neighbors, pairs)
+            def energy_fn(system, strain: jnp.ndarray, neighbors, pme):
+                graph = system_to_graph(system, neighbors, pme)
                 graph = strain_graph(graph, strain)
 
                 out, aux = potential(graph, has_aux=has_aux)
@@ -106,7 +105,7 @@ class mlffCalculatorSparse(Calculator):
                     return atomic_energy.sum()
 
             @jax.jit
-            def calculate_fn(system: System, neighbors, pairs):
+            def calculate_fn(system: System, neighbors, pme):
                 strain = get_strain()
                 out, grads = jax.value_and_grad(
                     energy_fn,
@@ -117,13 +116,12 @@ class mlffCalculatorSparse(Calculator):
                     system,
                     strain,
                     neighbors,
-                    pairs
+                    pme
                   )
 
                 forces = - grads[0].R
                 volume_factor = jnp.abs(jnp.dot(jnp.cross(system.cell[0], system.cell[1]), system.cell[2]))
                 stress = grads[1] / volume_factor
-
                 if isinstance(out, tuple):
                     if not has_aux:
                         raise ValueError
@@ -133,8 +131,8 @@ class mlffCalculatorSparse(Calculator):
                     return {'energy': out, 'forces': forces, 'stress': stress}
 
         else:
-            def energy_fn(system, neighbors, pairs):
-                graph = system_to_graph(system, neighbors, pairs)
+            def energy_fn(system, neighbors, pme):
+                graph = system_to_graph(system, neighbors, pme)
                 out = potential(graph, has_aux=has_aux)
                 if isinstance(out, tuple):
                     if not has_aux:
@@ -148,7 +146,7 @@ class mlffCalculatorSparse(Calculator):
                     return atomic_energy.sum()
 
             @jax.jit
-            def calculate_fn(system, neighbors,  pairs):
+            def calculate_fn(system, neighbors, pme):
                 out, grads = jax.value_and_grad(
                     energy_fn,
                     allow_int=True,
@@ -156,7 +154,7 @@ class mlffCalculatorSparse(Calculator):
                 )(
                     system,
                     neighbors,
-                    pairs
+                    pme
                 )
                 forces = - grads.R
 
@@ -169,13 +167,12 @@ class mlffCalculatorSparse(Calculator):
                     return {'energy': out, 'forces': forces}
 
         self.calculate_fn = calculate_fn
-
+        self.pme = None
         self.neighbors = None
         self.spatial_partitioning = None
         self.capacity_multiplier = capacity_multiplier
-        self.pairs = None
-        self.cutoff = potential.cutoff
-
+        self.cutoff = 5. # cutoff for the neighbor list
+        self.cutoff_electrostatics = 12. # cutoff for electrostatics
         self.dtype = dtype
 
     def calculate(self, atoms=None, *args, **kwargs):
@@ -188,17 +185,23 @@ class mlffCalculatorSparse(Calculator):
         else:
             cell = None
 
+        # Allocate the grid for PME. It might be necessary to put some tollerance in the cell
+        # to fullfil that the grid is big enough to keep the max distance between points    
+        if self.pme is None and cell is not None:
+            self.pme = get_ngrid(cell, self.cutoff_electrostatics, tolerance=5e-4)
+            
         if self.spatial_partitioning is None:
             self.neighbors, self.spatial_partitioning = neighbor_list(positions=system.R,
                                                                       cell=cell,
                                                                       cutoff=self.cutoff,
                                                                       skin=0.,
-                                                                      capacity_multiplier=self.capacity_multiplier)
-        neighbors = self.spatial_partitioning.update_fn(system.R, self.neighbors, cell)
-        if neighbors.overflow:
-            raise RuntimeError('Spatial overflow.')
-        else:
-            self.neighbors = neighbors
+                                                                      capacity_multiplier=self.capacity_multiplier,
+                                                                      electro_cutoff=12.)
+        neighbors = self.spatial_partitioning.update_fn(system.R, self.neighbors, new_cell=cell)
+        # if neighbors.overflow:
+        #     raise RuntimeError('Spatial overflow.')
+        # else:
+        self.neighbors = neighbors
         if neighbors.cell_list is not None:
             # If cell list needs to be reallocated, then reallocate neighbors
             if neighbors.cell_list.reallocate:
@@ -206,12 +209,10 @@ class mlffCalculatorSparse(Calculator):
                                                                       cell=cell,
                                                                       cutoff=self.cutoff,
                                                                       skin=0.,
-                                                                      capacity_multiplier=self.capacity_multiplier)
-        if self.pairs is None:
-            idx_i_lrr, idx_j_lrr = ase_neighbor_list('ij', atoms, 100, self_interaction=False)
-            self.pairs = Pairs(jnp.array(idx_i_lrr, dtype=jnp.int32), jnp.array(idx_j_lrr, dtype=jnp.int32))
+                                                                      capacity_multiplier=self.capacity_multiplier,
+                                                                      electro_cutoff=12.)
 
-        output = self.calculate_fn(system, neighbors, self.pairs)  # note different cell convention
+        output = self.calculate_fn(system, neighbors, self.pme)  # note different cell convention
         self.results = jax.tree_map(lambda x: np.array(x), output)
 
 def to_displacement(cell):
@@ -232,6 +233,21 @@ def to_displacement(cell):
     # reverse sign convention bc feels more natural
     return lambda Ra, Rb: displacement(Rb, Ra)
 
+def get_ngrid(cell, r_cut, tolerance):
+    """ Get the grid for PME calculation. Alpha is calculated from the tolerance and r_cut.
+    Args:
+        cell (np.ndarray): 3x3 matrix of cell vectors.
+        r_cut (float): cutoff radius.
+        tolerance (float): tolerance for the PME calculation. Usually 5e-4.
+    Returns:
+        PME: PME object containing the grid, alpha, tolerance and the frequencies.
+    """
+    alpha = np.sqrt(-np.log(2 * tolerance)) / r_cut
+    lcell = np.linalg.norm(cell, axis=0)
+    ngrid = np.ceil((2 * alpha * lcell) / (3 * tolerance ** (1 / 5))).astype(int)
+    freq = jnp.meshgrid(*[jnp.fft.fftfreq(g) for g in ngrid])
+    ngrid = jnp.zeros((*ngrid,), dtype=jnp.float32)
+    return PME(ngrid, alpha, tolerance, freq)
 
 @jax.jit
 def to_graph(atomic_numbers, positions, cell, neighbors):
@@ -260,7 +276,7 @@ def add_batch_dim(tree):
 
 
 def neighbor_list(positions: jnp.ndarray, cutoff: float, skin: float, cell: jnp.ndarray = None,
-                  capacity_multiplier: float = 1.25):
+                  capacity_multiplier: float = 1.25, electro_cutoff: float = 12.):
     """
 
     Args:
@@ -279,11 +295,12 @@ def neighbor_list(positions: jnp.ndarray, cutoff: float, skin: float, cell: jnp.
         raise ImportError('For neighborhood list, please install the glp package from ...')
 
     allocate, update = quadratic_neighbor_list(
-        cell, cutoff, skin, capacity_multiplier=capacity_multiplier, use_cell_list=True
+        cell, cutoff, skin, capacity_multiplier=capacity_multiplier, use_cell_list=True, electro_cutoff=electro_cutoff
     )
     neighbors = allocate(positions)
     return neighbors, SpatialPartitioning(allocate_fn=allocate,
                                           update_fn=jax.jit(update),
                                           cutoff=cutoff,
                                           skin=skin,
-                                          capacity_multiplier=capacity_multiplier)
+                                          capacity_multiplier=capacity_multiplier,
+                                          electro_cutoff=electro_cutoff)

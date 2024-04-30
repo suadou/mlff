@@ -111,8 +111,7 @@ class MLFFPotentialSparse(MachineLearningPotential):
         net, params = load_model_from_workdir(workdir=workdir, model=model)
         cfg = load_hyperparameters(workdir=workdir)
 
-        #net.reset_input_convention('displacements')
-        net.reset_input_convention('positions')
+        net.reset_input_convention('displacements')
         net.reset_output_convention('per_atom')
 
         cutoff = cfg.model.cutoff
@@ -146,7 +145,11 @@ class MLFFPotentialSparse(MachineLearningPotential):
                 'total_charge': graph.total_charge,
                 'num_unpaired_electrons': graph.num_unpaired_electrons,
                 'idx_i_lr': graph.idx_i_lr,
-                'idx_j_lr': graph.idx_j_lr
+                'idx_j_lr': graph.idx_j_lr,
+                'cell': graph.cell,
+                'ngrid': graph.ngrid,
+                'alpha': graph.alpha,
+                'frequency': graph.frequency
             }
 
             return x
