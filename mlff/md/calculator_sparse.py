@@ -34,6 +34,7 @@ class mlffCalculatorSparse(Calculator):
     def create_from_ckpt_dir(cls,
                              ckpt_dir: str,
                              calculate_stress: bool = False,
+                             use_PME: bool = False,
                              E_to_eV: float = 1.,
                              F_to_eV_Ang: float = 1.,
                              capacity_multiplier: float = 1.25,
@@ -54,6 +55,7 @@ class mlffCalculatorSparse(Calculator):
                    E_to_eV=E_to_eV,
                    F_to_eV_Ang=F_to_eV_Ang,
                    capacity_multiplier=capacity_multiplier,
+                   use_PME=use_PME,
                    dtype=dtype,
                    has_aux=has_aux
                    )
@@ -65,6 +67,7 @@ class mlffCalculatorSparse(Calculator):
             F_to_eV_Ang: float = 1.,
             capacity_multiplier: float = 1.25,
             calculate_stress: bool = False,
+            use_PME: bool = False,
             dtype: np.dtype = np.float32,
             has_aux: bool = False,
             *args,
@@ -167,12 +170,13 @@ class mlffCalculatorSparse(Calculator):
                     return {'energy': out, 'forces': forces}
 
         self.calculate_fn = calculate_fn
+        self.use_PME = use_PME
         self.pme = None
         self.neighbors = None
         self.spatial_partitioning = None
         self.capacity_multiplier = capacity_multiplier
         self.cutoff = 5. # cutoff for the neighbor list
-        self.cutoff_electrostatics = 12. # cutoff for electrostatics
+        self.cutoff_electrostatics = 10. # cutoff for electrostatics
         self.dtype = dtype
 
     def calculate(self, atoms=None, *args, **kwargs):
@@ -187,7 +191,7 @@ class mlffCalculatorSparse(Calculator):
 
         # Allocate the grid for PME. It might be necessary to put some tollerance in the cell
         # to fullfil that the grid is big enough to keep the max distance between points    
-        if self.pme is None and cell is not None:
+        if self.pme is None and self.use_PME:
             self.pme = get_ngrid(cell, self.cutoff_electrostatics, tolerance=5e-4)
             
         if self.spatial_partitioning is None:
@@ -198,10 +202,10 @@ class mlffCalculatorSparse(Calculator):
                                                                       capacity_multiplier=self.capacity_multiplier,
                                                                       electro_cutoff=12.)
         neighbors = self.spatial_partitioning.update_fn(system.R, self.neighbors, new_cell=cell)
-        # if neighbors.overflow:
-        #     raise RuntimeError('Spatial overflow.')
-        # else:
-        self.neighbors = neighbors
+        if neighbors.overflow:
+            raise RuntimeError('Spatial overflow.')
+        else:
+            self.neighbors = neighbors
         if neighbors.cell_list is not None:
             # If cell list needs to be reallocated, then reallocate neighbors
             if neighbors.cell_list.reallocate:
@@ -304,3 +308,4 @@ def neighbor_list(positions: jnp.ndarray, cutoff: float, skin: float, cell: jnp.
                                           skin=skin,
                                           capacity_multiplier=capacity_multiplier,
                                           electro_cutoff=electro_cutoff)
+

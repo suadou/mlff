@@ -39,6 +39,7 @@ def get_observable_fn_sparse(model: StackNetSparse, observable: str = None):
                 node_mask: jnp.ndarray = None,
                 graph_mask: jnp.ndarray = None,
                 displacements: jnp.ndarray = None,
+                displacements_lr: jnp.ndarray = None,
                 graph_mask_expanded: jnp.ndarray = None,
                 total_charge: jnp.ndarray = None,
                 num_unpaired_electrons: jnp.ndarray = None,
@@ -62,6 +63,7 @@ def get_observable_fn_sparse(model: StackNetSparse, observable: str = None):
             inputs = dict(
                 positions=positions,
                 displacements=displacements,
+                displacements_lr=displacements_lr,
                 atomic_numbers=atomic_numbers,
                 idx_i=idx_i,
                 idx_j=idx_j,
@@ -94,6 +96,7 @@ def get_observable_fn_sparse(model: StackNetSparse, observable: str = None):
                 node_mask: jnp.ndarray = None,
                 graph_mask: jnp.ndarray = None,
                 displacements: jnp.ndarray = None,
+                displacements_lr: jnp.ndarray = None,
                 graph_mask_expanded: jnp.ndarray = None,
                 total_charge: jnp.ndarray = None,
                 num_unpaired_electrons: jnp.ndarray = None,
@@ -117,6 +120,7 @@ def get_observable_fn_sparse(model: StackNetSparse, observable: str = None):
             inputs = dict(
                 positions=positions,
                 displacements=displacements,
+                displacements_lr=displacements_lr,
                 atomic_numbers=atomic_numbers,
                 idx_i=idx_i,
                 idx_j=idx_j,
@@ -143,6 +147,8 @@ def get_observable_fn_sparse(model: StackNetSparse, observable: str = None):
 def get_energy_and_force_fn_sparse(model: StackNetSparse):
     def energy_fn(params,
                   positions: jnp.ndarray,
+                  displacements: jnp.ndarray,
+                  displacements_lr: jnp.ndarray,
                   atomic_numbers: jnp.ndarray,
                   idx_i: jnp.ndarray,
                   idx_j: jnp.ndarray,
@@ -171,6 +177,8 @@ def get_energy_and_force_fn_sparse(model: StackNetSparse):
             batch_segments = jnp.zeros_like(atomic_numbers)  # (num_nodes)
 
         inputs = dict(positions=positions,
+                      displacements=displacements,
+                      displacements_lr=displacements_lr,
                       atomic_numbers=atomic_numbers,
                       idx_i=idx_i,
                       idx_j=idx_j,
@@ -196,6 +204,8 @@ def get_energy_and_force_fn_sparse(model: StackNetSparse):
 
     def energy_and_force_and_dipole_and_hirsh_fn(params,
                             positions: jnp.ndarray,
+                            displacements: jnp.ndarray,
+                            displacements_lr: jnp.ndarray,
                             atomic_numbers: jnp.ndarray,
                             idx_i: jnp.ndarray,
                             idx_j: jnp.ndarray,
@@ -220,6 +230,8 @@ def get_energy_and_force_fn_sparse(model: StackNetSparse):
             argnums=1,
             has_aux=True)(params,
                           positions,
+                          displacements,
+                          displacements_lr,
                           atomic_numbers,
                           idx_i,
                           idx_j,
@@ -250,6 +262,8 @@ def get_energy_and_force_fn_sparse(model: StackNetSparse):
             batch_segments = jnp.zeros_like(atomic_numbers)  # (num_nodes) 
         
         inputs = dict(positions=positions,
+                displacements=displacements,
+                displacements_lr=displacements_lr,
                 atomic_numbers=atomic_numbers,
                 idx_i=idx_i,
                 idx_j=idx_j,

@@ -144,6 +144,7 @@ class MLFFPotentialSparse(MachineLearningPotential):
                 'idx_j': graph.others,
                 'total_charge': graph.total_charge,
                 'num_unpaired_electrons': graph.num_unpaired_electrons,
+                'displacements_lr': graph.edges_lr,
                 'idx_i_lr': graph.idx_i_lr,
                 'idx_j_lr': graph.idx_j_lr,
                 'cell': graph.cell,
