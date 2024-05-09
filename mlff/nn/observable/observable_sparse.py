@@ -41,6 +41,30 @@ def switch_function(x: jnp.ndarray, cuton: float, cutoff: float) -> jnp.ndarray:
     return jnp.where(x <= 0, ones, jnp.where(x >= 1, zeros, fm / (fp + fm)))
 
 @jax.jit
+def _switch_component(x: jnp.ndarray, ones: jnp.ndarray, zeros: jnp.ndarray) -> jnp.ndarray:
+    """ Component of the switch function, only for internal use. """
+    x_ = jnp.where(x <= 0, ones, x)  # prevent nan in backprop
+    return jnp.where(x <= 0, zeros, jnp.exp(-ones / x_))
+
+@jax.jit
+def switch_function(x: jnp.ndarray, cuton: float, cutoff: float) -> jnp.ndarray:
+    """
+    Switch function that smoothly (and symmetrically) goes from f(x) = 1 to
+    f(x) = 0 in the interval from x = cuton to x = cutoff. For x <= cuton,
+    f(x) = 1 and for x >= cutoff, f(x) = 0. This switch function has infinitely
+    many smooth derivatives.
+    NOTE: The implementation with the "_switch_component" function is
+    numerically more stable than a simplified version, it is not recommended 
+    to change this!
+    """
+    x = (x - cuton) / (cutoff - cuton)
+    ones = jnp.ones_like(x)
+    zeros = jnp.zeros_like(x)
+    fp = _switch_component(x, ones, zeros)
+    fm = _switch_component(1 - x, ones, zeros)
+    return jnp.where(x <= 0, ones, jnp.where(x >= 1, zeros, fm / (fp + fm)))
+
+@jax.jit
 def sigma(x):
     return safe_mask(x > 0, fn=lambda u: jnp.exp(-1. / u), operand=x, placeholder=0)
 
@@ -663,7 +687,7 @@ class ElectrostaticEnergySparse(BaseSubModule):
         idx_j_lr = inputs['idx_j_lr']        
         d_ij_lr = inputs['d_ij_lr']
        
-        atomic_electrostatic_energy_ij = _coulomb_erf(partial_charges, d_ij_lr, idx_i_lr, idx_j_lr, self.kehalf, self.electrostatic_energy_scale)
+        atomic_electrostatic_energy_ij = _coulomb_erf(partial_charges, d_ij_lr, idx_i_lr, idx_j_lr, self.ke, self.electrostatic_energy_scale)
 
         atomic_electrostatic_energy = segment_sum(
                 atomic_electrostatic_energy_ij,
