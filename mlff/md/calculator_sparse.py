@@ -249,7 +249,7 @@ def get_ngrid(cell, r_cut, tolerance):
     alpha = np.sqrt(-np.log(2 * tolerance)) / r_cut
     lcell = np.linalg.norm(cell, axis=0)
     ngrid = np.ceil((2 * alpha * lcell) / (3 * tolerance ** (1 / 5))).astype(int)
-    freq = jnp.meshgrid(*[jnp.fft.fftfreq(g) for g in ngrid])
+    freq = jnp.meshgrid(*[jnp.fft.fftfreq(g) for g in ngrid], indexing='ij')
     ngrid = jnp.zeros((*ngrid,), dtype=jnp.float32)
     return PME(ngrid, alpha, tolerance, freq)
 

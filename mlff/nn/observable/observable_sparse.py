@@ -14,6 +14,7 @@ from jax.scipy.special import factorial
 from mlff.masking.mask import safe_scale
 from mlff.nn.activation_function.activation_function import silu, softplus_inverse, softplus
 from jax.nn.initializers import constant
+from functools import partial
 
 @jax.jit
 def _switch_component(x: jnp.ndarray, ones: jnp.ndarray, zeros: jnp.ndarray) -> jnp.ndarray:
@@ -231,7 +232,6 @@ def _coulomb_pme(q: jnp.ndarray, positions : jnp.ndarray, cell: jnp.ndarray,
     grid = map_charges_to_grid(positions, q, icell, ngrid)
     Fgrid = jnp.fft.fftn(grid)
     mx, my, mz = frequency
-
     m = (icell[None, None, None, 0] * mx[:, :, :, None] * grid_dimensions[0] +
         icell[None, None, None, 1] * my[:, :, :, None] * grid_dimensions[1] +
         icell[None, None, None, 2] * mz[:, :, :, None] * grid_dimensions[2])
@@ -663,7 +663,7 @@ class ElectrostaticEnergySparse(BaseSubModule):
         idx_j_lr = inputs['idx_j_lr']        
         d_ij_lr = inputs['d_ij_lr']
        
-        atomic_electrostatic_energy_ij = _coulomb_erf(partial_charges, d_ij_lr, idx_i_lr, idx_j_lr, self.ke, self.electrostatic_energy_scale)
+        atomic_electrostatic_energy_ij = _coulomb_erf(partial_charges, d_ij_lr, idx_i_lr, idx_j_lr, self.kehalf, self.electrostatic_energy_scale)
 
         atomic_electrostatic_energy = segment_sum(
                 atomic_electrostatic_energy_ij,
@@ -674,7 +674,7 @@ class ElectrostaticEnergySparse(BaseSubModule):
         atomic_electrostatic_energy = safe_scale(atomic_electrostatic_energy, node_mask)
 
         ngrid = inputs['ngrid'] # Check if ngrid is not None. Temporary solution to check if use PME
-        if ngrid:
+        if isinstance(ngrid, jnp.ndarray):
             N = len(partial_charges)
             positions = inputs['positions']
             cell = inputs['cell']
