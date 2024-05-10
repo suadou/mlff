@@ -462,7 +462,7 @@ class ZBLRepulsionSparse(BaseSubModule):
                            placeholder=0.
                            )
 
-        x = self.ke * phi_r_cut_ij * z_d_ij
+        x = self.kehalf * phi_r_cut_ij * z_d_ij
 
         rzd = d_ij * (jnp.power(z_i, p) + jnp.power(z_j, p)) * d
         y = c1 * jnp.exp(-a1 * rzd) + c2 * jnp.exp(-a2 * rzd) + c3 * jnp.exp(-a3 * rzd) + c4 * jnp.exp(-a4 * rzd)
@@ -687,7 +687,7 @@ class ElectrostaticEnergySparse(BaseSubModule):
         idx_j_lr = inputs['idx_j_lr']        
         d_ij_lr = inputs['d_ij_lr']
        
-        atomic_electrostatic_energy_ij = _coulomb_erf(partial_charges, d_ij_lr, idx_i_lr, idx_j_lr, self.ke, self.electrostatic_energy_scale)
+        atomic_electrostatic_energy_ij = _coulomb_erf(partial_charges, d_ij_lr, idx_i_lr, idx_j_lr, self.kehalf, self.electrostatic_energy_scale)
 
         atomic_electrostatic_energy = segment_sum(
                 atomic_electrostatic_energy_ij,
