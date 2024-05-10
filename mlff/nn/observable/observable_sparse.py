@@ -462,7 +462,7 @@ class ZBLRepulsionSparse(BaseSubModule):
                            placeholder=0.
                            )
 
-        x = self.kehalf * phi_r_cut_ij * z_d_ij
+        x = self.ke * phi_r_cut_ij * z_d_ij
 
         rzd = d_ij * (jnp.power(z_i, p) + jnp.power(z_j, p)) * d
         y = c1 * jnp.exp(-a1 * rzd) + c2 * jnp.exp(-a2 * rzd) + c3 * jnp.exp(-a3 * rzd) + c4 * jnp.exp(-a4 * rzd)
