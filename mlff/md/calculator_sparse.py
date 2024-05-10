@@ -200,7 +200,7 @@ class mlffCalculatorSparse(Calculator):
                                                                       cutoff=self.cutoff,
                                                                       skin=0.,
                                                                       capacity_multiplier=self.capacity_multiplier,
-                                                                      electro_cutoff=12.)
+                                                                      electro_cutoff=self.cutoff_electrostatics)
         neighbors = self.spatial_partitioning.update_fn(system.R, self.neighbors, new_cell=cell)
         if neighbors.overflow:
             raise RuntimeError('Spatial overflow.')
@@ -214,7 +214,7 @@ class mlffCalculatorSparse(Calculator):
                                                                       cutoff=self.cutoff,
                                                                       skin=0.,
                                                                       capacity_multiplier=self.capacity_multiplier,
-                                                                      electro_cutoff=12.)
+                                                                      electro_cutoff=self.cutoff_electrostatics)
 
         output = self.calculate_fn(system, neighbors, self.pme)  # note different cell convention
         self.results = jax.tree_map(lambda x: np.array(x), output)
