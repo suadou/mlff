@@ -13,6 +13,21 @@ from mlff.utils import jraph_utils
 
 import pytest
 
+from collections import namedtuple
+
+
+Graph = namedtuple(
+    "Graph",
+    (
+        "nodes",
+        "receivers",
+        "senders",
+        "globals",
+        "edges",
+        "n_node",
+        "n_edge"
+    )
+)
 
 def graph_to_input(graph: jraph.GraphsTuple):
     return dict(
@@ -42,7 +57,7 @@ def batched_graph_to_input(graph: jraph.GraphsTuple):
     return inputs
 
 
-graph1 = jraph.GraphsTuple(
+graph1 = Graph(
     nodes=dict(
         positions=jnp.array(
             [
@@ -62,7 +77,7 @@ graph1 = jraph.GraphsTuple(
     n_edge=jnp.array([4])
 )
 
-graph2 = jraph.GraphsTuple(
+graph2 = Graph(
     nodes=dict(
         positions=jnp.array(
             [
@@ -81,7 +96,7 @@ graph2 = jraph.GraphsTuple(
     n_edge=jnp.array([2])
 )
 
-graph3 = jraph.GraphsTuple(
+graph3 = Graph(
     nodes=dict(
         positions=jnp.array(
             [
